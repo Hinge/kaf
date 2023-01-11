@@ -1,4 +1,29 @@
 # Kaf
+
+## Install
+Run `go install` from `cmd/kaf` directory
+
+The Hinge fork has additional features for working with Confluent Schema Header messages. It supports consuming and producing with Confluent Schema Headers.
+
+## Usage
+See below/command help for general usage instructions. This section focuses on use cases involving functionality that has been added in the fork.
+
+### Consume from topic with Confluent Headers
+```
+kaf --cluster prod-ue1-confluent-01 consume onboarding-complete-v1 --proto-include /path/to/shared-protobuf/kafka/ --proto-type onboarding.OnboardingComplete --confluent-header
+```
+
+### Query for message with key in topic with Confluent Headers
+```
+kaf --cluster prod-ue1-confluent-01 query prod-shield-user-eligible-v1 --key $querykey --proto-include /path/to/shared-protobuf/kafka/ --proto-type shield.UserEligible --confluent-header
+```
+
+### Produce message to topic with Confluent Headers
+```
+kaf --cluster prod-ue1-confluent-01 produce prod-shield-user-eligible-v1 --key $msgkey --schema-registry-key $schemakey --schema-registry-secret $schemasecret --schema-registry-url $schemaurl
+```
+
+## Original Readme
 Kafka CLI inspired by kubectl & docker
 
 [![Actions Status](https://github.com/birdayz/kaf/workflows/Go/badge.svg)](https://github.com/birdayz/kaf/actions)
