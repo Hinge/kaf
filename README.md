@@ -10,17 +10,17 @@ See below/command help for general usage instructions. This section focuses on u
 
 ### Consume from topic with Confluent Headers
 ```
-kaf --cluster prod-ue1-confluent-01 consume onboarding-complete-v1 --proto-include /path/to/shared-protobuf/kafka/ --proto-type onboarding.OnboardingComplete --confluent-header
+kaf --cluster $cluster consume $topicname --proto-include /path/to/protobufs/ --proto-type $protoname --confluent-header
 ```
 
 ### Query for message with key in topic with Confluent Headers
 ```
-kaf --cluster prod-ue1-confluent-01 query prod-shield-user-eligible-v1 --key $querykey --proto-include /path/to/shared-protobuf/kafka/ --proto-type shield.UserEligible --confluent-header
+kaf --cluster $cluster query $topicname --key $querykey --proto-include /path/to/shared-protobuf/kafka/ --proto-type $protoname --confluent-header
 ```
 
 ### Produce message to topic with Confluent Headers
 ```
-kaf --cluster prod-ue1-confluent-01 produce prod-shield-user-eligible-v1 --key $msgkey --schema-registry-key $schemakey --schema-registry-secret $schemasecret --schema-registry-url $schemaurl
+kaf --cluster $cluster produce $topicname --schema-registry-key $schemakey --schema-registry-secret $schemasecret --schema-registry-url $schemaurl --proto-type $protoname --key $msgkey
 ```
 
 ## Original Readme
