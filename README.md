@@ -15,12 +15,12 @@ kaf --cluster $cluster consume $topicname --proto-include /path/to/protobufs/ --
 
 ### Query for message with key in topic with Confluent Headers
 ```
-kaf --cluster $cluster query $topicname --key $querykey --proto-include /path/to/shared-protobuf/kafka/ --proto-type $protoname --confluent-header
+kaf --cluster $cluster query $topicname --key $querykey --proto-include /path/to/protobufs/ --proto-type $protoname --confluent-header
 ```
 
 ### Produce message to topic with Confluent Headers
 ```
-kaf --cluster $cluster produce $topicname --schema-registry-key $schemakey --schema-registry-secret $schemasecret --schema-registry-url $schemaurl --proto-type $protoname --key $msgkey
+kaf --cluster $cluster produce $topicname --schema-registry-key $schemakey --schema-registry-secret $schemasecret --schema-registry-url $schemaurl --proto-include /path/to/protobufs/ --proto-type $protoname --key $msgkey
 ```
 
 ## Original Readme
