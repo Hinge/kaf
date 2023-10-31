@@ -28,7 +28,6 @@ var (
 	groupCommitFlag        bool
 	raw                    bool
 	follow                 bool
-	confluentHeader        bool
 	trimKeyHeaderBytes     uint32
 	trimMessageHeaderBytes uint32
 	tail                   int32
