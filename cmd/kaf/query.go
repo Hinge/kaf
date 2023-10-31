@@ -18,7 +18,6 @@ func init() {
 	queryCmd.Flags().StringVarP(&keyFlag, "key", "k", "", "Key to search for")
 	queryCmd.Flags().StringSliceVar(&protoFiles, "proto-include", []string{}, "Path to proto files")
 	queryCmd.Flags().StringSliceVar(&protoExclude, "proto-exclude", []string{}, "Proto exclusions (path prefixes)")
-	queryCmd.Flags().BoolVar(&confluentHeader, "confluent-header", false, "Force deserialization of messages with confluent headers (use if header detection fails)")
 	queryCmd.Flags().StringVar(&protoType, "proto-type", "", "Fully qualified name of the proto message type. Example: com.test.SampleMessage")
 	queryCmd.Flags().StringVar(&keyProtoType, "key-proto-type", "", "Fully qualified name of the proto key type. Example: com.test.SampleMessage")
 
@@ -73,7 +72,7 @@ var queryCmd = &cobra.Command{
 						var keyTextRaw string
 						var valueTextRaw string
 						if protoType != "" {
-							d, err := protoDecode(reg, msg.Value, protoType)
+							d, err := protoDecode(reg, msg.Value, protoType, trimMessageHeaderBytes)
 							if err != nil {
 								fmt.Println("Failed proto decode")
 							}
@@ -83,7 +82,7 @@ var queryCmd = &cobra.Command{
 						}
 
 						if keyProtoType != "" {
-							d, err := protoDecode(reg, msg.Key, keyProtoType)
+							d, err := protoDecode(reg, msg.Key, keyProtoType, trimKeyHeaderBytes)
 							if err != nil {
 								fmt.Println("Failed proto decode")
 							}

@@ -23,15 +23,17 @@ import (
 )
 
 var (
-	offsetFlag      string
-	groupFlag       string
-	groupCommitFlag bool
-	raw             bool
-	follow          bool
-	confluentHeader bool
-	tail            int32
-	schemaCache     *avro.SchemaCache
-	keyfmt          *prettyjson.Formatter
+	offsetFlag             string
+	groupFlag              string
+	groupCommitFlag        bool
+	raw                    bool
+	follow                 bool
+	confluentHeader        bool
+	trimKeyHeaderBytes     uint32
+	trimMessageHeaderBytes uint32
+	tail                   int32
+	schemaCache            *avro.SchemaCache
+	keyfmt                 *prettyjson.Formatter
 
 	protoType    string
 	keyProtoType string
@@ -56,7 +58,8 @@ func init() {
 	consumeCmd.Flags().StringSliceVar(&protoFiles, "proto-include", []string{}, "Path to proto files")
 	consumeCmd.Flags().StringSliceVar(&protoExclude, "proto-exclude", []string{}, "Proto exclusions (path prefixes)")
 	consumeCmd.Flags().BoolVar(&decodeMsgPack, "decode-msgpack", false, "Enable deserializing msgpack")
-	consumeCmd.Flags().BoolVar(&confluentHeader, "confluent-header", false, "Force deserialization of messages with confluent headers (use if header detection fails)")
+	consumeCmd.Flags().Uint32VarP(&trimKeyHeaderBytes, "trim-key-header-bytes", "k", 0, "Trim the first n bytes from the key (use if header detection fails)")
+	consumeCmd.Flags().Uint32VarP(&trimMessageHeaderBytes, "trim-message-header-bytes", "m", 0, "Trim the first n bytes from the message (use if header detection fails)")
 	consumeCmd.Flags().StringVar(&protoType, "proto-type", "", "Fully qualified name of the proto message type. Example: com.test.SampleMessage")
 	consumeCmd.Flags().StringVar(&keyProtoType, "key-proto-type", "", "Fully qualified name of the proto key type. Example: com.test.SampleMessage")
 	consumeCmd.Flags().Int32SliceVarP(&flagPartitions, "partitions", "p", []int32{}, "Partitions to consume from")
@@ -262,7 +265,7 @@ func handleMessage(msg *sarama.ConsumerMessage, mu *sync.Mutex) {
 	var err error
 
 	if protoType != "" {
-		dataToDisplay, err = protoDecode(reg, msg.Value, protoType)
+		dataToDisplay, err = protoDecode(reg, msg.Value, protoType, trimMessageHeaderBytes)
 		if err != nil {
 			fmt.Fprintf(&stderr, "failed to decode proto. falling back to binary outputla. Error: %v\n", err)
 		}
@@ -274,7 +277,7 @@ func handleMessage(msg *sarama.ConsumerMessage, mu *sync.Mutex) {
 	}
 
 	if keyProtoType != "" {
-		keyToDisplay, err = protoDecode(reg, msg.Key, keyProtoType)
+		keyToDisplay, err = protoDecode(reg, msg.Key, keyProtoType, trimKeyHeaderBytes)
 		if err != nil {
 			fmt.Fprintf(&stderr, "failed to decode proto key. falling back to binary outputla. Error: %v\n", err)
 		}
@@ -309,10 +312,20 @@ func handleMessage(msg *sarama.ConsumerMessage, mu *sync.Mutex) {
 	if !raw {
 		if isJSON(dataToDisplay) {
 			dataToDisplay = formatValue(dataToDisplay)
+		} else if trimMessageHeaderBytes > 0 {
+			trimmedData := dataToDisplay[trimMessageHeaderBytes:]
+			if isJSON(trimmedData) {
+				dataToDisplay = formatValue(trimmedData)
+			}
 		}
 
 		if isJSON(keyToDisplay) {
 			keyToDisplay = formatKey(keyToDisplay)
+		} else if trimKeyHeaderBytes > 0 {
+			trimmedKey := keyToDisplay[trimKeyHeaderBytes:]
+			if isJSON(trimmedKey) {
+				keyToDisplay = formatKey(trimmedKey)
+			}
 		}
 
 		w := tabwriter.NewWriter(&stderr, tabwriterMinWidth, tabwriterWidth, tabwriterPadding, tabwriterPadChar, tabwriterFlags)
@@ -354,27 +367,16 @@ func handleMessage(msg *sarama.ConsumerMessage, mu *sync.Mutex) {
 
 }
 
-// discardConfluentHeader removes the Confluent Schema Header so Confluent compatible messages can still be decoded
-// We assume message index is always 0 (first message in schema)
-// See https://docs.confluent.io/platform/current/schema-registry/serdes-develop/index.html#wire-format
-func discardConfluentHeader(b []byte) []byte {
-	//msg too short to contain header
-	if len(b) < 6 {
-		return b
-	}
-	return b[6:]
-}
-
 // proto to JSON
-func protoDecode(reg *proto.DescriptorRegistry, b []byte, _type string) ([]byte, error) {
+func protoDecode(reg *proto.DescriptorRegistry, b []byte, _type string, trimBytes uint32) ([]byte, error) {
 	dynamicMessage := reg.MessageForType(_type)
 	if dynamicMessage == nil {
 		return b, nil
 	}
 
-	// user requested confluent aware decoding
-	if confluentHeader {
-		bTrimmed := discardConfluentHeader(b)
+	// user requested to trim header bytes
+	if trimBytes > 0 {
+		bTrimmed := b[trimBytes:]
 		err := dynamicMessage.Unmarshal(bTrimmed)
 		if err != nil {
 			return nil, err
@@ -382,7 +384,7 @@ func protoDecode(reg *proto.DescriptorRegistry, b []byte, _type string) ([]byte,
 	} else {
 		err := dynamicMessage.Unmarshal(b)
 		if err != nil {
-			err = fmt.Errorf("retry with --confluent-header if invalid proto, it may be a confluent formatted message: %w", err)
+			err = fmt.Errorf("retry with --trim-key-header-bytes=N or --trim-message-header-bytes=N if invalid proto: %w", err)
 			return nil, err
 		}
 	}
