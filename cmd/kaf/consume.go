@@ -57,8 +57,8 @@ func init() {
 	consumeCmd.Flags().StringSliceVar(&protoFiles, "proto-include", []string{}, "Path to proto files")
 	consumeCmd.Flags().StringSliceVar(&protoExclude, "proto-exclude", []string{}, "Proto exclusions (path prefixes)")
 	consumeCmd.Flags().BoolVar(&decodeMsgPack, "decode-msgpack", false, "Enable deserializing msgpack")
-	consumeCmd.Flags().Uint32VarP(&trimKeyHeaderBytes, "trim-key-header-bytes", "k", 0, "Trim the first n bytes from the key (use if header detection fails)")
-	consumeCmd.Flags().Uint32VarP(&trimMessageHeaderBytes, "trim-message-header-bytes", "m", 0, "Trim the first n bytes from the message (use if header detection fails)")
+	consumeCmd.Flags().Uint32VarP(&trimKeyHeaderBytes, "trim-key-header-bytes", "k", 0, "Trim the first n bytes from the key")
+	consumeCmd.Flags().Uint32VarP(&trimMessageHeaderBytes, "trim-message-header-bytes", "m", 0, "Trim the first n bytes from the message")
 	consumeCmd.Flags().StringVar(&protoType, "proto-type", "", "Fully qualified name of the proto message type. Example: com.test.SampleMessage")
 	consumeCmd.Flags().StringVar(&keyProtoType, "key-proto-type", "", "Fully qualified name of the proto key type. Example: com.test.SampleMessage")
 	consumeCmd.Flags().Int32SliceVarP(&flagPartitions, "partitions", "p", []int32{}, "Partitions to consume from")
@@ -263,25 +263,27 @@ func handleMessage(msg *sarama.ConsumerMessage, mu *sync.Mutex) {
 	var keyToDisplay []byte
 	var err error
 
+	trimmedValue := msg.Value[trimMessageHeaderBytes:]
 	if protoType != "" {
-		dataToDisplay, err = protoDecode(reg, msg.Value, protoType, trimMessageHeaderBytes)
+		dataToDisplay, err = protoDecode(reg, trimmedValue, protoType)
 		if err != nil {
 			fmt.Fprintf(&stderr, "failed to decode proto. falling back to binary outputla. Error: %v\n", err)
 		}
 	} else {
-		dataToDisplay, err = avroDecode(msg.Value)
+		dataToDisplay, err = avroDecode(trimmedValue)
 		if err != nil {
 			fmt.Fprintf(&stderr, "could not decode Avro data: %v\n", err)
 		}
 	}
 
+	trimmedKey := msg.Key[trimKeyHeaderBytes:]
 	if keyProtoType != "" {
-		keyToDisplay, err = protoDecode(reg, msg.Key, keyProtoType, trimKeyHeaderBytes)
+		keyToDisplay, err = protoDecode(reg, trimmedKey, keyProtoType)
 		if err != nil {
 			fmt.Fprintf(&stderr, "failed to decode proto key. falling back to binary outputla. Error: %v\n", err)
 		}
 	} else {
-		keyToDisplay, err = avroDecode(msg.Key)
+		keyToDisplay, err = avroDecode(trimmedKey)
 		if err != nil {
 			fmt.Fprintf(&stderr, "could not decode Avro data: %v\n", err)
 		}
@@ -311,20 +313,10 @@ func handleMessage(msg *sarama.ConsumerMessage, mu *sync.Mutex) {
 	if !raw {
 		if isJSON(dataToDisplay) {
 			dataToDisplay = formatValue(dataToDisplay)
-		} else if trimMessageHeaderBytes > 0 {
-			trimmedData := dataToDisplay[trimMessageHeaderBytes:]
-			if isJSON(trimmedData) {
-				dataToDisplay = formatValue(trimmedData)
-			}
 		}
 
 		if isJSON(keyToDisplay) {
 			keyToDisplay = formatKey(keyToDisplay)
-		} else if trimKeyHeaderBytes > 0 {
-			trimmedKey := keyToDisplay[trimKeyHeaderBytes:]
-			if isJSON(trimmedKey) {
-				keyToDisplay = formatKey(trimmedKey)
-			}
 		}
 
 		w := tabwriter.NewWriter(&stderr, tabwriterMinWidth, tabwriterWidth, tabwriterPadding, tabwriterPadChar, tabwriterFlags)
@@ -367,31 +359,21 @@ func handleMessage(msg *sarama.ConsumerMessage, mu *sync.Mutex) {
 }
 
 // proto to JSON
-func protoDecode(reg *proto.DescriptorRegistry, b []byte, _type string, trimBytes uint32) ([]byte, error) {
+func protoDecode(reg *proto.DescriptorRegistry, b []byte, _type string) ([]byte, error) {
 	dynamicMessage := reg.MessageForType(_type)
 	if dynamicMessage == nil {
 		return b, nil
 	}
 
-	// user requested to trim header bytes
-	if trimBytes > 0 {
-		bTrimmed := b[trimBytes:]
-		err := dynamicMessage.Unmarshal(bTrimmed)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		err := dynamicMessage.Unmarshal(b)
-		if err != nil {
-			err = fmt.Errorf("retry with --trim-key-header-bytes=N or --trim-message-header-bytes=N if invalid proto: %w", err)
-			return nil, err
-		}
+	err := dynamicMessage.Unmarshal(b)
+	if err != nil {
+		return nil, err
 	}
 
 	var m jsonpb.Marshaler
 	var w bytes.Buffer
 
-	err := m.Marshal(&w, dynamicMessage)
+	err = m.Marshal(&w, dynamicMessage)
 	if err != nil {
 		return nil, err
 	}

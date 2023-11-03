@@ -72,7 +72,7 @@ var queryCmd = &cobra.Command{
 						var keyTextRaw string
 						var valueTextRaw string
 						if protoType != "" {
-							d, err := protoDecode(reg, msg.Value, protoType, trimMessageHeaderBytes)
+							d, err := protoDecode(reg, msg.Value, protoType)
 							if err != nil {
 								fmt.Println("Failed proto decode")
 							}
@@ -82,7 +82,7 @@ var queryCmd = &cobra.Command{
 						}
 
 						if keyProtoType != "" {
-							d, err := protoDecode(reg, msg.Key, keyProtoType, trimKeyHeaderBytes)
+							d, err := protoDecode(reg, msg.Key, keyProtoType)
 							if err != nil {
 								fmt.Println("Failed proto decode")
 							}
