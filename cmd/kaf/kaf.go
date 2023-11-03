@@ -207,7 +207,6 @@ func onInit() {
 	// Any set flags override the configuration
 	if schemaRegistryURL != "" {
 		currentCluster.SchemaRegistryURL = schemaRegistryURL
-		currentCluster.SchemaRegistryCredentials = nil
 	}
 
 	if brokersFlag != nil {
@@ -248,12 +247,7 @@ func getSchemaCache() (cache *avro.SchemaCache) {
 	if currentCluster.SchemaRegistryURL == "" {
 		return nil
 	}
-	var username, password string
-	if creds := currentCluster.SchemaRegistryCredentials; creds != nil {
-		username = creds.Username
-		password = creds.Password
-	}
-	cache, err := avro.NewSchemaCache(currentCluster.SchemaRegistryURL, username, password)
+	cache, err := avro.NewSchemaCache(currentCluster.SchemaRegistryURL)
 	if err != nil {
 		errorExit("Unable to get schema cache :%v\n", err)
 	}

@@ -1,9 +1,7 @@
 package avro
 
 import (
-	"encoding/base64"
 	"encoding/binary"
-	"net/http"
 	"sync"
 
 	schemaregistry "github.com/Landoop/schema-registry"
@@ -25,32 +23,9 @@ type SchemaCache struct {
 	codecsBySchemaID map[int]*cachedCodec
 }
 
-type transport struct {
-	underlyingTransport http.RoundTripper
-	encodedCredentials  string
-}
-
-// RoundTrip wraps the underlying transport's RoundTripper and injects a
-// HTTP Basic authentication header if credentials are provided.
-func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if t.encodedCredentials != "" {
-		req.Header.Add("Authorization", "Basic "+t.encodedCredentials)
-	}
-	return t.underlyingTransport.RoundTrip(req)
-}
-
 // NewSchemaCache returns a new Cache instance
-func NewSchemaCache(url string, username string, password string) (*SchemaCache, error) {
-	var encodedCredentials string
-	if username != "" {
-		encodedCredentials = base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
-	}
-	httpClient := &http.Client{Transport: &transport{
-		underlyingTransport: http.DefaultTransport,
-		encodedCredentials:  encodedCredentials,
-	}}
-
-	client, err := schemaregistry.NewClient(url, schemaregistry.UsingClient(httpClient))
+func NewSchemaCache(url string) (*SchemaCache, error) {
+	client, err := schemaregistry.NewClient(url)
 	if err != nil {
 		return nil, err
 	}
