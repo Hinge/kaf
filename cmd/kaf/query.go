@@ -20,7 +20,7 @@ func init() {
 	queryCmd.Flags().StringSliceVar(&protoExclude, "proto-exclude", []string{}, "Proto exclusions (path prefixes)")
 	queryCmd.Flags().StringVar(&protoType, "proto-type", "", "Fully qualified name of the proto message type. Example: com.test.SampleMessage")
 	queryCmd.Flags().StringVar(&keyProtoType, "key-proto-type", "", "Fully qualified name of the proto key type. Example: com.test.SampleMessage")
-	queryCmd.Flags().Uint32VarP(&trimKeyHeaderBytes, "trim-key-header-bytes", "k", 0, "Trim the first n bytes from the key")
+	queryCmd.Flags().Uint32Var(&trimKeyHeaderBytes, "trim-key-header-bytes", 0, "Trim the first n bytes from the key")
 	queryCmd.Flags().Uint32VarP(&trimMessageHeaderBytes, "trim-message-header-bytes", "m", 0, "Trim the first n bytes from the message")
 
 	queryCmd.Flags().StringVar(&grepValue, "grep", "", "Grep for value")
