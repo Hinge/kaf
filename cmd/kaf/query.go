@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"sync"
 
@@ -104,8 +105,11 @@ var queryCmd = &cobra.Command{
 						}
 
 						if match {
-							fmt.Printf("Key: %v\n", keyTextRaw)
-							fmt.Printf("Value: %v\n", valueTextRaw)
+							var stderr bytes.Buffer
+							dataToDisplay := formatMessage(msg, []byte(valueTextRaw), []byte(keyTextRaw), &stderr)
+							stderr.WriteTo(errWriter)
+							_, _ = colorableOut.Write(dataToDisplay)
+							fmt.Fprintln(outWriter)
 						}
 
 						if msg.Offset == pc.HighWaterMarkOffset()-1 {
