@@ -20,7 +20,7 @@ kaf --cluster $cluster consume $topicname --proto-include /path/to/protobufs/ --
 ### Consume from topic with Debezium Headers
 
 ```
-kaf --cluster $cluster consume $topicname --trim-message-header-bytes 5 --rim-key-header-bytes 5
+kaf --cluster $cluster consume $topicname --trim-message-header-bytes 5 --trim-key-header-bytes 5
 ```
 
 ### Query for message with key in topic with Confluent Headers
