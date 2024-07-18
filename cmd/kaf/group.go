@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"unicode"
 
@@ -15,7 +16,7 @@ import (
 
 	"sync"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 
@@ -115,7 +116,7 @@ func (r *resetHandler) Setup(s sarama.ConsumerGroupSession) error {
 	}
 
 	for p, o := range r.partitionOffsets {
-		req.AddBlock(r.topic, p, o, 0, 0, "")
+		req.AddBlock(r.topic, p, o, 0, "")
 	}
 	br, err := r.client.Coordinator(r.group)
 	if err != nil {
@@ -197,7 +198,7 @@ func createGroupCommitOffsetCmd() *cobra.Command {
 						i, err := strconv.ParseInt(offset, 10, 64)
 						if err != nil {
 							// Try oldest/newest/..
-							if offset == "oldest" {
+							if offset == "oldest" || offset == "earliest" {
 								i = sarama.OffsetOldest
 							} else if offset == "newest" || offset == "latest" {
 								i = sarama.OffsetNewest
@@ -245,7 +246,7 @@ func createGroupCommitOffsetCmd() *cobra.Command {
 			}
 			for _, detail := range groupDescs {
 				state := detail.State
-				if state != "Empty" {
+				if !slices.Contains([]string{"Empty", "Dead"}, state) {
 					errorExit("Consumer group %s has active consumers in it, cannot set offset\n", group)
 				}
 			}
@@ -490,7 +491,14 @@ var groupDescribeCmd = &cobra.Command{
 			errorExit("Failed to fetch group offsets: %v\n", err)
 		}
 
-		for topic, partitions := range offsetAndMetadata.Blocks {
+		topics := make([]string, 0, len(offsetAndMetadata.Blocks))
+		for k := range offsetAndMetadata.Blocks {
+			topics = append(topics, k)
+		}
+		sort.Strings(topics)
+
+		for _, topic := range topics {
+			partitions := offsetAndMetadata.Blocks[topic]
 			if len(flagDescribeTopics) > 0 {
 				var found bool
 				for _, topicToShow := range flagDescribeTopics {

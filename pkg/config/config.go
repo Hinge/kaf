@@ -10,13 +10,15 @@ import (
 )
 
 type SASL struct {
-	Mechanism    string `yaml:"mechanism"`
-	Username     string `yaml:"username"`
-	Password     string `yaml:"password"`
-	ClientID     string `yaml:"clientID"`
-	ClientSecret string `yaml:"clientSecret"`
-	TokenURL     string `yaml:"tokenURL"`
-	Token        string `yaml:"token"`
+	Mechanism    string   `yaml:"mechanism"`
+	Username     string   `yaml:"username"`
+	Password     string   `yaml:"password"`
+	ClientID     string   `yaml:"clientID"`
+	ClientSecret string   `yaml:"clientSecret"`
+	TokenURL     string   `yaml:"tokenURL"`
+	Scopes       []string `yaml:"scopes"`
+	Token        string   `yaml:"token"`
+	Version      int16    `yaml:"version"`
 }
 
 type TLS struct {
@@ -111,6 +113,7 @@ func (c *Config) Write() error {
 	if err != nil {
 		panic(err)
 	}
+	defer file.Close()
 
 	encoder := yaml.NewEncoder(file)
 	return encoder.Encode(&c)
@@ -124,6 +127,7 @@ func ReadConfig(cfgPath string) (c Config, err error) {
 		}
 		return Config{}, err
 	}
+	defer file.Close()
 	decoder := yaml.NewDecoder(file)
 	err = decoder.Decode(&c)
 	if err != nil {

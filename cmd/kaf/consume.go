@@ -10,7 +10,7 @@ import (
 	"sync"
 	"text/tabwriter"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"github.com/golang/protobuf/jsonpb"
 	prettyjson "github.com/hokaccha/go-prettyjson"
 	"github.com/itchyny/gojq"

@@ -10,7 +10,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"github.com/mattn/go-colorable"
 	"github.com/spf13/cobra"
 
@@ -40,6 +40,7 @@ func getConfig() (saramaConfig *sarama.Config) {
 			saramaConfig.Net.SASL.User = cluster.SASL.Username
 			saramaConfig.Net.SASL.Password = cluster.SASL.Password
 		}
+		saramaConfig.Net.SASL.Version = cluster.SASL.Version
 	}
 	if cluster.TLS != nil && cluster.SecurityProtocol != "SASL_SSL" {
 		saramaConfig.Net.TLS.Enable = true
@@ -107,11 +108,10 @@ func getConfig() (saramaConfig *sarama.Config) {
 		} else if cluster.SASL.Mechanism == "SCRAM-SHA-256" {
 			saramaConfig.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &XDGSCRAMClient{HashGeneratorFcn: SHA256} }
 			saramaConfig.Net.SASL.Mechanism = sarama.SASLMechanism(sarama.SASLTypeSCRAMSHA256)
-		} else if cluster.SASL.Mechanism == "OAUTHBEARER" {
+		} else if cluster.SASL.Mechanism == "OAUTHBEARER" || cluster.SASL.Mechanism == "AWS_MSK_IAM" {
 			//Here setup get token function
 			saramaConfig.Net.SASL.Mechanism = sarama.SASLMechanism(sarama.SASLTypeOAuth)
 			saramaConfig.Net.SASL.TokenProvider = newTokenProvider()
-
 		}
 	}
 	return saramaConfig
