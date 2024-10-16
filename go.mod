@@ -2,6 +2,8 @@ module github.com/Hinge/kaf
 
 go 1.23
 
+toolchain go1.23.2
+
 require (
 	github.com/IBM/sarama v1.43.2
 	github.com/Landoop/schema-registry v0.0.0-20190327143759-50a5701c1891
