@@ -77,7 +77,7 @@ func readLines(reader io.Reader, out chan []byte) {
 	}
 
 	for scanner.Scan() {
-		out <- scanner.Bytes()
+		out <- bytes.Clone(scanner.Bytes())
 	}
 	close(out)
 
