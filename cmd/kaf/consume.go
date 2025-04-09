@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -27,13 +29,13 @@ var (
 	groupCommitFlag bool
 	outputFormat    = OutputFormatDefault
 	// Deprecated: Use outputFormat instead.
-	raw         bool
-	follow      bool
+	raw                    bool
+	follow                 bool
 	trimKeyHeaderBytes     uint32
 	trimMessageHeaderBytes uint32
-	tail        int32
-	schemaCache *avro.SchemaCache
-	keyfmt      *prettyjson.Formatter
+	tail                   int32
+	schemaCache            *avro.SchemaCache
+	keyfmt                 *prettyjson.Formatter
 
 	protoType    string
 	keyProtoType string
@@ -340,6 +342,10 @@ func formatMessage(msg *sarama.ConsumerMessage, rawMessage []byte, keyToDisplay 
 	switch outputFormat {
 	case OutputFormatRaw:
 		return rawMessage
+	case OutputFormatHex:
+		return []byte(hex.EncodeToString(rawMessage))
+	case OutputFormatBase64:
+		return []byte(base64.StdEncoding.EncodeToString(rawMessage))
 	case OutputFormatJSON:
 		jsonMessage := make(map[string]interface{})
 
@@ -491,6 +497,8 @@ const (
 	OutputFormatDefault OutputFormat = "default"
 	OutputFormatRaw     OutputFormat = "raw"
 	OutputFormatJSON    OutputFormat = "json"
+	OutputFormatHex     OutputFormat = "hex"
+	OutputFormatBase64  OutputFormat = "base64"
 )
 
 func (e *OutputFormat) String() string {
@@ -499,11 +507,11 @@ func (e *OutputFormat) String() string {
 
 func (e *OutputFormat) Set(v string) error {
 	switch v {
-	case "default", "raw", "json":
+	case "default", "raw", "json", "hex", "base64":
 		*e = OutputFormat(v)
 		return nil
 	default:
-		return fmt.Errorf("must be one of: default, raw, json")
+		return fmt.Errorf("must be one of: default, raw, json, hex, base64")
 	}
 }
 
@@ -512,5 +520,5 @@ func (e *OutputFormat) Type() string {
 }
 
 func completeOutputFormat(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	return []string{"default", "raw", "json"}, cobra.ShellCompDirectiveNoFileComp
+	return []string{"default", "raw", "json", "hex", "base64"}, cobra.ShellCompDirectiveNoFileComp
 }
