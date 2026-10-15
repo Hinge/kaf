@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"text/tabwriter"
 
@@ -49,13 +50,18 @@ var (
 	limitMessagesFlag int64
 
 	reg *proto.DescriptorRegistry
+
+	headerFilterFlag []string
+	headerFilter     = make(map[string]string)
+
+	readCommitted bool
 )
 
 func init() {
 	rootCmd.AddCommand(consumeCmd)
 	consumeCmd.Flags().StringVar(&offsetFlag, "offset", "oldest", "Offset to start consuming. Possible values: oldest, newest, or integer.")
 	consumeCmd.Flags().BoolVar(&raw, "raw", false, "Print raw output of messages, without key or prettified JSON")
-	consumeCmd.Flags().Var(&outputFormat, "output", "Set output format messages: default, raw (without key or prettified JSON), json")
+	consumeCmd.Flags().Var(&outputFormat, "output", "Set output format messages: default, raw (without key or prettified JSON), hex, base64 (without key or prettified JSON), json, json-each-row")
 	consumeCmd.Flags().BoolVarP(&follow, "follow", "f", false, "Continue to consume messages until program execution is interrupted/terminated")
 	consumeCmd.Flags().Int32VarP(&tail, "tail", "n", 0, "Print last n messages per partition")
 	consumeCmd.Flags().StringSliceVar(&protoFiles, "proto-include", []string{}, "Path to proto files")
@@ -71,6 +77,8 @@ func init() {
 	consumeCmd.Flags().BoolVar(&groupCommitFlag, "commit", false, "Commit Group offset after receiving messages. Works only if consuming as Consumer Group")
 	consumeCmd.Flags().StringVar(&keyFilter, "key-filter", "", "jq path expression to filter on message keys.")
 	consumeCmd.Flags().StringVar(&valueFilter, "value-filter", "", "jq path expression to filter on message values.")
+	consumeCmd.Flags().StringSliceVar(&headerFilterFlag, "header", []string{}, "Filter messages by header. Format: key:value. Multiple filters can be specified")
+	consumeCmd.Flags().BoolVar(&readCommitted, "read-committed", false, "Whether to set the isolation level to read committed (Kafka transactions), default is false (read uncommitted)")
 
 	if err := consumeCmd.RegisterFlagCompletionFunc("output", completeOutputFormat); err != nil {
 		errorExit("Failed to register flag completion: %v", err)
@@ -159,6 +167,18 @@ var consumeCmd = &cobra.Command{
 			if err != nil {
 				errorExit("Could not compile jq value filter '%s': %w", valueFilter, err)
 			}
+		}
+
+		for _, f := range headerFilterFlag {
+			parts := strings.SplitN(f, ":", 2)
+			if len(parts) != 2 {
+				errorExit("Invalid header filter format: %s. Expected format: key:value", f)
+			}
+			headerFilter[parts[0]] = parts[1]
+		}
+
+		if readCommitted {
+			cfg.Consumer.IsolationLevel = sarama.ReadCommitted
 		}
 
 		if groupFlag != "" {
@@ -275,7 +295,27 @@ func withoutConsumerGroup(ctx context.Context, client sarama.Client, topic strin
 	wg.Wait()
 }
 
+func checkHeaders(headers []*sarama.RecordHeader, filter map[string]string) bool {
+	if len(filter) == 0 {
+		return true
+	}
+
+	matchCount := 0
+	for _, h := range headers {
+		hdrStr := parseHeader(h.Value)
+		if val, ok := filter[string(h.Key)]; ok && hdrStr == val {
+			matchCount++
+		}
+	}
+
+	return len(headers) > 0 && matchCount >= len(headers)
+}
+
 func handleMessage(msg *sarama.ConsumerMessage, mu *sync.Mutex) {
+	if !checkHeaders(msg.Headers, headerFilter) {
+		return
+	}
+
 	var stderr bytes.Buffer
 
 	var dataToDisplay []byte
@@ -338,6 +378,22 @@ func handleMessage(msg *sarama.ConsumerMessage, mu *sync.Mutex) {
 	mu.Unlock()
 }
 
+func parseHeader(hdrBytes []byte) (hdrStr string) {
+	// Try to detect azure eventhub-specific encoding
+	if len(hdrBytes) > 0 {
+		switch hdrBytes[0] {
+		case 161:
+			hdrStr = string(hdrBytes[2 : 2+hdrBytes[1]])
+		case 131:
+			hdrStr = strconv.FormatUint(binary.BigEndian.Uint64(hdrBytes[1:9]), 10)
+		default:
+			hdrStr = string(hdrBytes)
+		}
+	}
+
+	return hdrStr
+}
+
 func formatMessage(msg *sarama.ConsumerMessage, rawMessage []byte, keyToDisplay []byte, stderr *bytes.Buffer) []byte {
 	switch outputFormat {
 	case OutputFormatRaw:
@@ -366,6 +422,29 @@ func formatMessage(msg *sarama.ConsumerMessage, rawMessage []byte, keyToDisplay 
 		}
 
 		return jsonToDisplay
+	case OutputFormatJSONEachRow:
+		jsonMessage := JSONEachRowMessage{}
+		jsonMessage.Topic = msg.Topic
+		jsonMessage.Partition = msg.Partition
+		jsonMessage.Offset = msg.Offset
+		jsonMessage.Timestamp = msg.Timestamp
+		jsonMessage.Headers = make([]MessageHeader, len(msg.Headers))
+		for i, hdr := range msg.Headers {
+			hdrStr := parseHeader(hdr.Value)
+			jsonMessage.Headers[i] = MessageHeader{
+				Key:   string(hdr.Key),
+				Value: hdrStr,
+			}
+		}
+		jsonMessage.Key = string(keyToDisplay)
+		jsonMessage.Payload = string(rawMessage)
+
+		jsonToDisplay, err := json.Marshal(jsonMessage)
+		if err != nil {
+			fmt.Fprintf(stderr, "could not decode JSON data: %v", err)
+		}
+
+		return jsonToDisplay
 	case OutputFormatDefault:
 		fallthrough
 	default:
@@ -384,24 +463,11 @@ func formatMessage(msg *sarama.ConsumerMessage, rawMessage []byte, keyToDisplay 
 		}
 
 		for _, hdr := range msg.Headers {
-			var hdrValue string
-			// Try to detect azure eventhub-specific encoding
-			if len(hdr.Value) > 0 {
-				switch hdr.Value[0] {
-				case 161:
-					hdrValue = string(hdr.Value[2 : 2+hdr.Value[1]])
-				case 131:
-					hdrValue = strconv.FormatUint(binary.BigEndian.Uint64(hdr.Value[1:9]), 10)
-				default:
-					hdrValue = string(hdr.Value)
-				}
-			}
-
-			fmt.Fprintf(w, "\tKey: %v\tValue: %v\n", string(hdr.Key), hdrValue)
-
+			hdrStr := parseHeader(hdr.Value)
+			fmt.Fprintf(w, "\tKey: %v\tValue: %v\n", string(hdr.Key), hdrStr)
 		}
 
-		if msg.Key != nil && len(msg.Key) > 0 {
+		if len(msg.Key) > 0 {
 			fmt.Fprintf(w, "Key:\t%v\n", string(keyToDisplay))
 		}
 		fmt.Fprintf(w, "Partition:\t%v\nOffset:\t%v\nTimestamp:\t%v\n", msg.Partition, msg.Offset, msg.Timestamp)
@@ -494,11 +560,12 @@ func matchesFilter(data []byte, filter *gojq.Code) bool {
 type OutputFormat string
 
 const (
-	OutputFormatDefault OutputFormat = "default"
-	OutputFormatRaw     OutputFormat = "raw"
-	OutputFormatJSON    OutputFormat = "json"
-	OutputFormatHex     OutputFormat = "hex"
-	OutputFormatBase64  OutputFormat = "base64"
+	OutputFormatDefault     OutputFormat = "default"
+	OutputFormatRaw         OutputFormat = "raw"
+	OutputFormatJSON        OutputFormat = "json"
+	OutputFormatJSONEachRow OutputFormat = "json-each-row"
+	OutputFormatHex         OutputFormat = "hex"
+	OutputFormatBase64      OutputFormat = "base64"
 )
 
 func (e *OutputFormat) String() string {
@@ -507,11 +574,11 @@ func (e *OutputFormat) String() string {
 
 func (e *OutputFormat) Set(v string) error {
 	switch v {
-	case "default", "raw", "json", "hex", "base64":
+	case "default", "raw", "json", "json-each-row", "hex", "base64":
 		*e = OutputFormat(v)
 		return nil
 	default:
-		return fmt.Errorf("must be one of: default, raw, json, hex, base64")
+		return fmt.Errorf("must be one of: default, raw, json, json-each-row, hex, base64")
 	}
 }
 
@@ -520,5 +587,5 @@ func (e *OutputFormat) Type() string {
 }
 
 func completeOutputFormat(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	return []string{"default", "raw", "json", "hex", "base64"}, cobra.ShellCompDirectiveNoFileComp
+	return []string{"default", "raw", "json", "json-each-row", "hex", "base64"}, cobra.ShellCompDirectiveNoFileComp
 }

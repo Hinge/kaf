@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"io/ioutil"
+	"log"
 	"os"
 	"testing"
 	"time"
@@ -26,6 +26,7 @@ func testMain(m *testing.M) (code int) {
 		gnomock.WithContainerName("kaf-kafka"),
 	)
 	if err != nil {
+		log.Println(err)
 		return 1
 	}
 
@@ -54,7 +55,7 @@ func runCmd(t *testing.T, in io.Reader, args ...string) string {
 
 	require.NoError(t, rootCmd.ExecuteContext(ctx))
 
-	bs, err := ioutil.ReadAll(b)
+	bs, err := io.ReadAll(b)
 	require.NoError(t, err)
 
 	return string(bs)
